@@ -20,6 +20,16 @@ if (!userId || !icons.length) {
 const tempDir = path.join(os.tmpdir(), `kit-${userId}`);
 const distDir = path.join(os.tmpdir(), `dist-${userId}`);
 
+// MIME type mapping
+const MIME_TYPES = {
+  '.css': 'text/css',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.svg': 'image/svg+xml',
+};
+
 try {
   // 1. Fetch SVGs
   const { data: rows, error } = await supabase
@@ -28,7 +38,6 @@ try {
     .in('name', icons);
 
   if (error) throw error;
-
   if (!rows.length) throw new Error('No icons found');
 
   await fs.mkdir(tempDir, { recursive: true });
@@ -54,33 +63,47 @@ try {
     emptyDist: true,
   });
 
-  // 3. Upload to Supabase Storage
+  // 3. Upload only needed font files + CSS
+  const neededExtensions = ['.css', '.woff2', '.woff', '.ttf', '.eot', '.svg'];
   const files = await fs.readdir(distDir);
+  let uploaded = 0, failed = 0;
+
   for (const file of files) {
+    const ext = path.extname(file);
+    if (!neededExtensions.includes(ext)) {
+      console.log(`⏭️ Skipped ${file} (not needed)`);
+      continue;
+    }
+
     const filePath = path.join(distDir, file);
     const buffer = await fs.readFile(filePath);
-    await supabase.storage
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+    const { error: uploadError } = await supabase.storage
       .from('kits')
       .upload(`${userId}/${file}`, buffer, {
-        contentType: 'application/octet-stream',
+        contentType,
         upsert: true,
       });
+
+    if (uploadError) {
+      console.error(`❌ Failed to upload ${file}:`, uploadError.message);
+      failed++;
+    } else {
+      console.log(`✔ Uploaded ${file} (${contentType})`);
+      uploaded++;
+    }
   }
 
-  // 4. Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from('kits')
-    .getPublicUrl(`${userId}/ca-icons.css`);
+  if (failed) console.error(`❌ ${failed} upload(s) failed.`);
 
-  console.log('✅ Kit live at:', publicUrl);
-
-  // Optional: store URL in a 'kits' table so frontend can fetch it
-  await supabase.from('kits').upsert({
-    user_id: userId,
-    css_url: publicUrl,
-    updated_at: new Date(),
-  }).select();
-
+  // 4. Public URL (only if CSS was uploaded)
+  if (uploaded > 0) {
+    const { data: { publicUrl } } = supabase.storage
+      .from('kits')
+      .getPublicUrl(`${userId}/ca-icons.css`);
+    console.log('✅ Kit live at:', publicUrl);
+  }
 } catch (err) {
   console.error('Build failed:', err);
   process.exit(1);
