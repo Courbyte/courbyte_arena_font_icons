@@ -1,0 +1,25 @@
+name: Generate Icon Kit
+
+on:
+  repository_dispatch:
+    types: [build-kit]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install svgtofont @supabase/supabase-js
+
+      - name: Build and upload kit
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KIT_USER_ID: ${{ github.event.client_payload.userId }}
+          KIT_ICONS: ${{ toJson(github.event.client_payload.icons) }}
+        run: node scripts/ci-generate-kit.js
