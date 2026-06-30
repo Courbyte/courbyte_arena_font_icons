@@ -34,7 +34,7 @@ try {
   // 1. Fetch SVGs
   const { data: rows, error } = await supabase
     .from('icons')
-    .select('name, svg, source_repo')
+     .select('name, svg, source_repo, clean_name')
     .in('name', icons);
 
   if (error) throw error;
@@ -43,7 +43,7 @@ try {
   await fs.mkdir(tempDir, { recursive: true });
   for (const icon of rows) {
     if (!icon.svg) continue;
-    const fileName = `${icon.source_repo}_${icon.name}.svg`;
+   const fileName = `${icon.clean_name || icon.source_repo + '_' + icon.name}.svg`;
     await fs.writeFile(path.join(tempDir, fileName), icon.svg);
   }
 
