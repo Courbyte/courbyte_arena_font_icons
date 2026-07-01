@@ -12,15 +12,16 @@ const supabase = createClient(
 const userId = process.env.KIT_USER_ID;
 const icons = JSON.parse(process.env.KIT_ICONS || '[]');
 
-if (!userId || !icons.length) {
-  console.error('Missing userId or icons');
+if (!userId) {
+  console.error('Missing userId');
   process.exit(1);
 }
+
+// Now icons can be empty (full kit) or a list of names
 
 const tempDir = path.join(os.tmpdir(), `kit-${userId}`);
 const distDir = path.join(os.tmpdir(), `dist-${userId}`);
 
-// MIME type mapping
 const MIME_TYPES = {
   '.css': 'text/css',
   '.woff2': 'font/woff2',
@@ -31,23 +32,31 @@ const MIME_TYPES = {
 };
 
 try {
-  // 1. Fetch SVGs
-  const { data: rows, error } = await supabase
+  let query = supabase
     .from('icons')
-     .select('name, svg, source_repo, clean_name')
-    .in('name', icons);
+    .select('name, svg, source_repo, clean_name');
+
+  if (icons.length > 0) {
+    // Subset kit: only fetch requested icons
+    query = query.in('name', icons);
+  } else {
+    // Full kit: fetch all icons that have a clean_name
+    query = query.not('clean_name', 'is', null);
+  }
+
+  const { data: rows, error } = await query;
 
   if (error) throw error;
-  if (!rows.length) throw new Error('No icons found');
+  if (!rows || rows.length === 0) throw new Error('No icons found');
 
   await fs.mkdir(tempDir, { recursive: true });
   for (const icon of rows) {
     if (!icon.svg) continue;
-   const fileName = `${icon.clean_name || icon.source_repo + '_' + icon.name}.svg`;
+    const fileName = `${icon.clean_name || icon.source_repo + '_' + icon.name}.svg`;
     await fs.writeFile(path.join(tempDir, fileName), icon.svg);
   }
 
-  // 2. Generate font
+  // Generate font
   await fs.mkdir(distDir, { recursive: true });
   await svgtofont({
     src: tempDir,
@@ -63,7 +72,7 @@ try {
     emptyDist: true,
   });
 
-  // 3. Upload only needed font files + CSS
+  // Upload needed font files + CSS
   const neededExtensions = ['.css', '.woff2', '.woff', '.ttf', '.eot', '.svg'];
   const files = await fs.readdir(distDir);
   let uploaded = 0, failed = 0;
@@ -97,7 +106,6 @@ try {
 
   if (failed) console.error(`❌ ${failed} upload(s) failed.`);
 
-  // 4. Public URL (only if CSS was uploaded)
   if (uploaded > 0) {
     const { data: { publicUrl } } = supabase.storage
       .from('kits')
