@@ -9,14 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # - run: npm install svgtofont @supabase/supabase-js
+
       - run: npm install svgtofont @supabase/supabase-js @aws-sdk/client-s3
+
       - name: Build and upload kit
         env:
-         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_PUBLIC_ACCESS_KEY_ID: ${{ secrets.R2_PUBLIC_ACCESS_KEY_ID }}
           R2_PUBLIC_SECRET_ACCESS_KEY: ${{ secrets.R2_PUBLIC_SECRET_ACCESS_KEY }}
@@ -25,3 +27,4 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           KIT_USER_ID: ${{ github.event.client_payload.userId }}
           KIT_ICONS: ${{ toJson(github.event.client_payload.icons) }}
+        run: node scripts/ci-generate-kit.js
